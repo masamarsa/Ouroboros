@@ -1,0 +1,33 @@
+services:
+  ouroboros-dev:
+    # Dockerfileの 'dev' ステージのみをビルドターゲットにする
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+
+    # コンテナ名
+    container_name: ouroboros_dev
+
+    # ソースコードのマウント
+    volumes:
+      - ./include:/workspace/include
+      - ./src:/workspace/src
+      - ./.vscode:/workspace/.vscode
+      - ./CMakeLists.txt:/workspace/CMakeLists.txt
+      - ./Ouroboros_Readme.md:/workspace/Ouroboros_Readme.md
+      - ./Ouroboros_Readme.pdf:/workspace/Ouroboros_Readme.pdf
+
+    # 開発用ポート (必要に応じて変更)
+    ports:
+      - "8080:8080"
+
+    # 重要: io_uring と デバッガ(GDB) のためのセキュリティ設定
+    cap_add:
+      - SYS_PTRACE
+      - IPC_LOCK # io_uringのバッファリングに必要な場合がある
+    security_opt:
+      - seccomp:unconfined
+
+    # コンテナを常駐させるコマンド
+    command: /bin/sh -c "while sleep 1000; do :; done"
