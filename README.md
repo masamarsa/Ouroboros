@@ -8,37 +8,19 @@ Ouroboros is a modern, header-only (or static) C++ web server library designed t
 
 ## ⚡ Philosophy
 
-* 
-**Native to the Core:** Built exclusively for Linux (Kernel 5.10+) using `io_uring` for fully asynchronous I/O. No `epoll`, no legacy wrappers.
-
-
+* **Native to the Core:** Built exclusively for Linux (Kernel 5.10+) using `io_uring` for fully asynchronous I/O. No `epoll`, no legacy wrappers.
 * **STL Harmony:** We believe the library should feel like an extension of the language. All identifiers use `snake_case` to blend seamlessly with the C++ Standard Library.
-
-
 * **Zero Overhead:** Detailed focus on memory efficiency. We aim for **zero heap allocations** (new/malloc) during request processing.
-
-
-* 
-**Performance First:** Targeting throughput and latency equivalent to or exceeding ASP.NET Core (Kestrel) and Rust (Actix-web).
+* **Performance First:** Targeting throughput and latency equivalent to or exceeding ASP.NET Core (Kestrel) and Rust (Actix-web).
 
 
 
 ## 🚀 Key Features
 
-* 
-**Modern C++ Standards:** Written in C++20/23, utilizing Concepts and `std::expected` for robust error handling.
-
-
-* 
-**io_uring Architecture:** Uses the raw `io_uring` interface (no `liburing` overhead) with `IO_URING_OP_PROVIDE_BUFFERS` for kernel-managed buffering.
-
-
+* **Modern C++ Standards:** Written in C++20/23, utilizing Concepts and `std::expected` for robust error handling.
+* **io_uring Architecture:** Uses the raw `io_uring` interface (no `liburing` overhead) with `IO_URING_OP_PROVIDE_BUFFERS` for kernel-managed buffering.
 * **Thread-per-Core Model:** Implements a Shared-Nothing architecture using `SO_REUSEPORT`. No mutex contention in user-land.
-
-
 * **Zero-Copy Routing:** Request parsing operates entirely on `std::string_view` mapped to the ring buffer. No strings are constructed during parsing.
-
-
 
 ## 🛠 Usage
 
@@ -82,41 +64,19 @@ int main() {
 ### Namespace Structure
 
 * **`ouroboros::http`**: The core. Contains the low-latency HTTP server, client, WebSocket, and `io_uring` wrappers.
-
-
-* 
-**`ouroboros::www` (Planned)**: A future application layer featuring a React/Vue-like component system for high-speed Server-Side Rendering (SSR).
-
-
+* **`ouroboros::www` (Planned)**: A future application layer featuring a React/Vue-like component system for high-speed Server-Side Rendering (SSR).
 
 ### Internals
 
-* 
-**`unique_socket`**: A RAII wrapper for file descriptors, ensuring strictly managed lifecycles.
-
-
-* 
-**State Machine Parser**: A pointer-based parser that never allocates memory.
-
-
-* 
-**Error Handling**: Uses `std::expected` for control flow (404, parsing errors) and exceptions only for fatal/recoverable errors.
-
-
+* **`unique_socket`**: A RAII wrapper for file descriptors, ensuring strictly managed lifecycles.
+* **State Machine Parser**: A pointer-based parser that never allocates memory.
+* **Error Handling**: Uses `std::expected` for control flow (404, parsing errors) and exceptions only for fatal/recoverable errors.
 
 ## 📋 Requirements
 
-* 
-**OS**: Linux (Kernel 5.10 or higher required for full `io_uring` support).
-
-
-* 
-**Compiler**: GCC 11+ or Clang 14+ (Must support C++20/23).
-
-
+* **OS**: Linux (Kernel 5.10 or higher required for full `io_uring` support).
+* **Compiler**: GCC 11+ or Clang 14+ (Must support C++20/23).
 * **Dependencies**: None (Standard Library & Linux Syscalls only). OpenSSL is optional.
-
-
 
 ## 🔮 Roadmap (The "www" Vision)
 
