@@ -15,8 +15,8 @@ services:
       - ./src:/workspace/src
       - ./.vscode:/workspace/.vscode
       - ./CMakeLists.txt:/workspace/CMakeLists.txt
-      - ./Ouroboros_Readme.md:/workspace/Ouroboros_Readme.md
-      - ./Ouroboros_Readme.pdf:/workspace/Ouroboros_Readme.pdf
+      - ./docs:/workspace/docs
+      - ./Makefile:/workspace/Makefile
 
     # 開発用ポート (必要に応じて変更)
     ports:
