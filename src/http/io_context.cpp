@@ -41,6 +41,8 @@ namespace ouroboros::http
         }
         ring_fd_ = unique_socket(fd); // RAII管理へ
 
+        sq_tail_cached_ = 0; // setup_memory_mapping後に実際のtail値で初期化
+
         // 2. メモリマッピングの実行
         try {
             setup_memory_mapping();
@@ -94,56 +96,71 @@ namespace ouroboros::http
         cq_.tail = (uint32_t *)((char *)cq_ptr_ + params_.cq_off.tail);
         cq_.ring_mask = (uint32_t *)((char *)cq_ptr_ + params_.cq_off.ring_mask);
         cq_.ring_entries = (uint32_t *)((char *)cq_ptr_ + params_.cq_off.ring_entries);
+
+        // キャッシュを実際のtail値で初期化
+        sq_tail_cached_ = *sq_.tail;
     }
 
-    io_uring_sqe *io_context::get_sqe() noexcept {
-        uint32_t head = std::atomic_load_explicit((std::atomic<uint32_t>*)sq_.head, std::memory_order_acquire);
-        uint32_t tail = *sq_.tail; // User only writes tail
 
-        if (tail - head >= *sq_.ring_entries) {
-            return nullptr; // Ring is full
+    io_uring_sqe *io_context::get_sqe() noexcept {
+        // headはカーネルが更新するので、常に最新を読む
+        uint32_t head = std::atomic_load_explicit(reinterpret_cast<std::atomic<uint32_t>*>(sq_.head), std::memory_order_acquire);
+
+        // tailはユーザー空間のキャッシュ値を使う
+        if (sq_tail_cached_ - head >= *sq_.ring_entries) {
+            // リングが一杯。送信を試みる。
+            if (submit() < 0) return nullptr;
+            // 再度チェック
+            head = std::atomic_load_explicit(reinterpret_cast<std::atomic<uint32_t>*>(sq_.head), std::memory_order_acquire);
+            if (sq_tail_cached_ - head >= *sq_.ring_entries) {
+                return nullptr; // それでも一杯なら諦める
+            }
         }
 
         struct io_uring_sqe *sqes = (struct io_uring_sqe *)sqes_ptr_;
-        struct io_uring_sqe *sqe = &sqes[tail & *sq_.ring_mask];
+        struct io_uring_sqe *sqe = &sqes[sq_tail_cached_ & *sq_.ring_mask];
 
         // SQEをクリアしておく
         std::memset(sqe, 0, sizeof(*sqe));
 
+        // ローカルのtailを進める (まだカーネルには見えない)
+        sq_tail_cached_++;
+
         return sqe;
     }
 
-    void io_context::submit_request() {
-        // Tailを更新してカーネルに通知
-        uint32_t tail = *sq_.tail;
-        uint32_t index = tail & *sq_.ring_mask;
+    int io_context::submit() {
+        uint32_t submitted_tail = *sq_.tail;
+        unsigned to_submit = sq_tail_cached_ - submitted_tail;
+        if (to_submit == 0) {
+            return 0; // 送信対象なし
+        }
 
-        sq_.array[index] = index; // 単純なマッピング
-        tail++;
+        // カーネルに見えているtailから、ローカルで進めたtailまでを更新
+        for (unsigned i = 0; i < to_submit; ++i) {
+            sq_.array[(submitted_tail + i) & *sq_.ring_mask] = (submitted_tail + i) & *sq_.ring_mask;
+        }
 
-        std::atomic_store_explicit((std::atomic<uint32_t>*)sq_.tail, tail, std::memory_order_release);
+        // カーネルにtailの更新を通知
+        std::atomic_store_explicit(reinterpret_cast<std::atomic<uint32_t>*>(sq_.tail), sq_tail_cached_, std::memory_order_release);
 
         // システムコールでカーネルを起こす
         // io_uring_enter(fd, to_submit, min_complete, flags, sig)
-        io_uring_enter_syscall(ring_fd_.native_handle(), 1, 0, 0, nullptr);
+        return io_uring_enter_syscall(ring_fd_.native_handle(), to_submit, 0, 0, nullptr);
     }
 
+
     void io_context::process_completions() {
-        unsigned head;
-        head = std::atomic_load_explicit((std::atomic<uint32_t>*)cq_.head, std::memory_order_acquire);
+        unsigned head = std::atomic_load_explicit((std::atomic<uint32_t>*)cq_.head, std::memory_order_acquire);
 
         while (head != *cq_.tail) {
-            // 【修正前】
-            // struct io_uring_cqe* cqes = (struct io_uring_cqe*)cq_ptr_;
-
-            // 【修正後】 cq_off.cqes オフセットを足して正しい先頭アドレスを取得する
-            struct io_uring_cqe *cqes = (struct io_uring_cqe *)((char *)cq_ptr_ + params_.cq_off.cqes);
-
-            struct io_uring_cqe *cqe = &cqes[head & *cq_.ring_mask];
+            // BUGFIX: cq_ptr_はリング全体の先頭であり、CQE配列の先頭ではない。
+            // カーネルから提供されたオフセット(params_.cq_off.cqes)を使って正しい位置を取得する。
+            struct io_uring_cqe *cqe = (struct io_uring_cqe *)((char *)cq_ptr_ + params_.cq_off.cqes + (head & *cq_.ring_mask) * sizeof(struct io_uring_cqe));
 
             if (cqe->user_data) {
                 auto *t = reinterpret_cast<task *>(cqe->user_data);
-                t->complete(cqe->res);
+                t->complete(cqe->res, cqe->flags);
             }
 
             head++;
@@ -156,14 +173,17 @@ namespace ouroboros::http
         std::cout << "io_context: Event loop running..." << std::endl;
 
         while (true) {
-            // CQEを処理
+            // 1. 新しい完了イベントが到着するまで、カーネルで効率的に待機する。
+            //    現在のシングルスレッド設計では、すべてのサブミットは完了ハンドラ内から
+            //    行われ、その際にシステムコールが発行されるため、ここでは to_submit=0
+            //    で待機するのが適切です。
+            int ret = io_uring_enter_syscall(ring_fd_.native_handle(), 0, 1, IORING_ENTER_GETEVENTS, nullptr);
+            if (ret < 0 && errno != EINTR) {
+                perror("io_uring_enter in run loop failed");
+            }
+
+            // 2. 待機から復帰後、利用可能なすべての完了イベントを処理する。
             process_completions();
-            // ここで少し待機しないとCPU 100%になる (ビジーループ)
-            // 本番では io_uring_enter で待機するが、今は簡易的に wait
-            std::this_thread::sleep_for(std::chrono::milliseconds(500));
-            // io_uring_enter(fd, 0, 1, IORING_ENTER_GETEVENTS) で1つ以上の完了を待つのが定石
-            io_uring_enter_syscall(ring_fd_.native_handle(), 0, 1, IORING_ENTER_GETEVENTS, nullptr);
         }
     }
-
 } // namespace ouroboros::http

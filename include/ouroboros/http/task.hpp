@@ -9,7 +9,8 @@ namespace ouroboros::http
     {
         virtual ~task() = default;
         // result: システムコールの戻り値 (例: recvなら受信バイト数、acceptならFD)
-        virtual void complete(int result) = 0;
+        // flags: 完了キューエントリ(CQE)のフラグ
+        virtual void complete(int result, uint32_t flags) = 0;
     };
 }
 

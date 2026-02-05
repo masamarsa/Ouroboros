@@ -12,20 +12,7 @@ ENV CXX=g++
 # linux-libc-dev: io_uring用ヘッダー (<linux/io_uring.h>)
 # gdb: デバッグ用
 # cmake, ninja-build: ビルドシステム
-RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
-    build-essential \
-    cmake \
-    ninja-build \
-    gdb \
-    git \
-    curl \
-    ca-certificates \
-    linux-libc-dev \
-    libssl-dev \
-    less \
-    procps \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends build-essential cmake ninja-build gdb git curl ca-certificates linux-libc-dev libssl-dev less procps && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # 開発用プロンプト設定 (視認性向上)
 RUN echo 'PS1="\u@ouroboros-dev:\w\$ "' >> /root/.bashrc

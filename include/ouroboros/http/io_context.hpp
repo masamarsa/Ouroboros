@@ -36,8 +36,8 @@ namespace ouroboros::http
         // SQE (Submission Queue Entry) を取得する
         // 取得できない場合 (Full) は nullptr を返す
         [[nodiscard]] io_uring_sqe *get_sqe() noexcept;
-        // キューに入れたリクエストをカーネルに送信する
-        void submit_request();
+        // get_sqe() で取得したリクエストをカーネルに送信する
+        int submit();
 
         // タイムアウトを設定する (SQEの準備)
         // 注意: ts は submit_request() が完了するまで(正確にはカーネルが読み込むまで)有効である必要があります。
@@ -65,6 +65,9 @@ namespace ouroboros::http
         io_uring_queue sq_;
         io_uring_queue cq_;
         struct io_uring_params params_;
+
+        // SQのtailをユーザー空間でキャッシュし、バッチ送信を可能にする
+        uint32_t sq_tail_cached_;
         // 内部ヘルパー: mmap のセットアップ
         void setup_memory_mapping();
     };
